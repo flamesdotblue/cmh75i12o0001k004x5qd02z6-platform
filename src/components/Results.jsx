@@ -1,108 +1,117 @@
-import { useMemo, useRef, useState } from 'react';
-import { Volume2, BookOpen } from 'lucide-react';
+function Section({ title, children }) {
+  return (
+    <div className="section">
+      <div className="section-title">{title}</div>
+      <div className="section-body">{children}</div>
+    </div>
+  )
+}
 
-export default function Results({ data, loading, error }) {
-  const [audioUrl, setAudioUrl] = useState('');
-  const audioRef = useRef(null);
+function Pill({ children, onClick }) {
+  return (
+    <button onClick={onClick} className="pill">{children}</button>
+  )
+}
 
-  const entry = useMemo(() => {
-    if (!data || !Array.isArray(data) || data.length === 0) return null;
-    return data[0];
-  }, [data]);
+export default function Results({ status, error, result, onPick }) {
+  if (status === 'idle') {
+    return <div className="muted">Search for a word to get started.</div>
+  }
 
-  const phonetics = useMemo(() => {
-    if (!entry?.phonetics) return [];
-    return entry.phonetics.filter(Boolean);
-  }, [entry]);
+  if (status === 'loading') {
+    return (
+      <div className="skeleton">
+        <div className="sk-line w-40" />
+        <div className="sk-line w-60" />
+        <div className="sk-block" />
+      </div>
+    )
+  }
 
-  const meanings = entry?.meanings || [];
+  if (status === 'error') {
+    return (
+      <div className="alert alert-error">
+        <div className="alert-title">No results</div>
+        <div className="alert-text">{error || 'Try a different word.'}</div>
+      </div>
+    )
+  }
 
-  const playAudio = (url) => {
-    if (!url) return;
-    try {
-      setAudioUrl(url);
-      setTimeout(() => {
-        audioRef.current?.play();
-      }, 0);
-    } catch {}
-  };
+  if (!result) return null
 
-  if (loading) return null;
+  const title = result.word
+  const phonetics = result.phonetics || []
+  const audioUrl = phonetics.find(p => p.audio)?.audio
+  const meanings = result.meanings || []
 
   return (
-    <div className="mt-6">
-      {error ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 text-red-800 px-4 py-3">{error}</div>
-      ) : null}
-
-      {!error && !entry ? (
-        <div className="text-neutral-500 text-sm">Search for a word to see definitions.</div>
-      ) : null}
-
-      {entry ? (
-        <div className="space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
-            <div>
-              <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-neutral-900">{entry.word}</h2>
-              {entry.phonetic ? (
-                <p className="text-neutral-500">{entry.phonetic}</p>
-              ) : null}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {phonetics
-                .filter((p) => p.audio)
-                .slice(0, 3)
-                .map((p, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => playAudio(p.audio)}
-                    className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50"
-                  >
-                    <Volume2 className="h-4 w-4" />
-                    {p.text || 'Pronounce'}
-                  </button>
-                ))}
-              <audio ref={audioRef} src={audioUrl} />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {meanings.map((m, i) => (
-              <div key={i} className="rounded-xl border border-neutral-200 p-5">
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="inline-flex items-center justify-center h-7 w-7 rounded-full bg-neutral-900 text-white">
-                    <BookOpen className="h-4 w-4" />
-                  </div>
-                  <h3 className="font-semibold text-neutral-900">{m.partOfSpeech}</h3>
-                </div>
-                <ul className="space-y-3 list-disc list-inside">
-                  {m.definitions.slice(0, 5).map((d, idx) => (
-                    <li key={idx} className="text-neutral-800 leading-relaxed">
-                      {d.definition}
-                      {d.example ? (
-                        <p className="text-neutral-500 text-sm mt-1">“{d.example}”</p>
-                      ) : null}
-                      {d.synonyms && d.synonyms.length ? (
-                        <p className="text-neutral-500 text-xs mt-1">Synonyms: {d.synonyms.slice(0, 5).join(', ')}</p>
-                      ) : null}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
-
-          {entry.sourceUrls && entry.sourceUrls.length ? (
-            <div className="text-sm text-neutral-500">
-              Source: {entry.sourceUrls.map((u, i) => (
-                <a key={u + i} href={u} target="_blank" rel="noreferrer" className="underline hover:text-neutral-700 mr-2">
-                  {new URL(u).hostname}
-                </a>
+    <div className="results">
+      <div className="results-head">
+        <div>
+          <h2 className="word">{title}</h2>
+          {phonetics.some(p => p.text) && (
+            <div className="phonetics">
+              {phonetics.filter(p => p.text).map((p, i) => (
+                <span key={i} className="phonetic">{p.text}</span>
               ))}
             </div>
-          ) : null}
+          )}
         </div>
-      ) : null}
+        {audioUrl && (
+          <button className="btn btn-dark" onClick={() => new Audio(audioUrl).play()} title="Play pronunciation">Listen</button>
+        )}
+      </div>
+
+      {meanings.map((m, idx) => (
+        <div key={idx} className="meaning">
+          <div className="pos">{m.partOfSpeech}</div>
+
+          <Section title="Definitions">
+            {(m.definitions || []).map((d, i) => (
+              <div key={i} className="card">
+                <div className="card-title">{d.definition}</div>
+                {d.example && <div className="card-sub">Example: “{d.example}”</div>}
+                {Array.isArray(d.synonyms) && d.synonyms.length > 0 && (
+                  <div className="pill-row">
+                    {d.synonyms.slice(0, 8).map((s, k) => (
+                      <Pill key={k} onClick={() => onPick && onPick(s)}>{s}</Pill>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </Section>
+
+          {Array.isArray(m.synonyms) && m.synonyms.length > 0 && (
+            <Section title="Synonyms">
+              <div className="pill-row">
+                {m.synonyms.slice(0, 14).map((s, i) => (
+                  <Pill key={i} onClick={() => onPick && onPick(s)}>{s}</Pill>
+                ))}
+              </div>
+            </Section>
+          )}
+
+          {Array.isArray(m.antonyms) && m.antonyms.length > 0 && (
+            <Section title="Antonyms">
+              <div className="pill-row">
+                {m.antonyms.slice(0, 14).map((a, i) => (
+                  <Pill key={i} onClick={() => onPick && onPick(a)}>{a}</Pill>
+                ))}
+              </div>
+            </Section>
+          )}
+        </div>
+      ))}
+
+      {Array.isArray(result.sourceUrls) && result.sourceUrls.length > 0 && (
+        <div className="source">
+          Source:
+          {result.sourceUrls.map((u, i) => (
+            <a key={u + i} className="link" href={u} target="_blank" rel="noreferrer"> {new URL(u).hostname}</a>
+          ))}
+        </div>
+      )}
     </div>
-  );
+  )
 }

@@ -1,82 +1,97 @@
-import { useEffect, useMemo, useState } from 'react';
-import Hero from './components/Hero';
-import SearchBar from './components/SearchBar';
-import Results from './components/Results';
-import History from './components/History';
-import { fetchDefinition } from './lib/dictionary';
+import { useEffect, useMemo, useState } from 'react'
+import './styles.css'
+import Header from './components/Header'
+import SearchBar from './components/SearchBar'
+import Results from './components/Results'
+import Recent from './components/Recent'
 
 export default function App() {
-  const [query, setQuery] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [data, setData] = useState(null);
-  const [history, setHistory] = useState(() => {
+  const [query, setQuery] = useState('')
+  const [status, setStatus] = useState('idle') // idle | loading | success | error
+  const [error, setError] = useState('')
+  const [result, setResult] = useState(null)
+  const [recent, setRecent] = useState(() => {
     try {
-      const saved = localStorage.getItem('dict_history');
-      return saved ? JSON.parse(saved) : [];
+      const raw = localStorage.getItem('recentWords')
+      return raw ? JSON.parse(raw) : []
     } catch {
-      return [];
+      return []
     }
-  });
+  })
 
   useEffect(() => {
-    try {
-      localStorage.setItem('dict_history', JSON.stringify(history.slice(0, 15)));
-    } catch {}
-  }, [history]);
+    try { localStorage.setItem('recentWords', JSON.stringify(recent.slice(0, 10))) } catch {}
+  }, [recent])
 
-  const lastSearched = useMemo(() => (history[0] ? history[0].term : ''), [history]);
+  const canSearch = useMemo(() => query.trim().length > 0, [query])
 
-  const onSearch = async (term) => {
-    if (!term) return;
-    setQuery(term);
-    setError('');
-    setLoading(true);
-    setData(null);
+  async function search(term) {
+    const word = (term ?? query).trim()
+    if (!word) return
+    setStatus('loading')
+    setError('')
+    setResult(null)
     try {
-      const res = await fetchDefinition(term);
-      setData(res);
-      setHistory((prev) => {
-        const filtered = prev.filter((h) => h.term.toLowerCase() !== term.toLowerCase());
-        return [{ term, at: Date.now() }, ...filtered].slice(0, 15);
-      });
+      const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`)
+      if (!res.ok) {
+        let message = 'No results found.'
+        try { const j = await res.json(); if (j && j.message) message = j.message } catch {}
+        throw new Error(message)
+      }
+      const data = await res.json()
+      if (!Array.isArray(data) || data.length === 0) throw new Error('No results found.')
+      setResult(data[0])
+      setStatus('success')
+      setRecent(prev => {
+        const filtered = prev.filter(w => w.toLowerCase() !== word.toLowerCase())
+        return [word, ...filtered].slice(0, 10)
+      })
     } catch (e) {
-      setError(e.message || 'Failed to fetch definition');
-    } finally {
-      setLoading(false);
+      setStatus('error')
+      setError(e.message || 'Something went wrong')
     }
-  };
-
-  const onHistorySelect = (term) => {
-    onSearch(term);
-  };
-
-  const onClearHistory = () => {
-    setHistory([]);
-  };
+  }
 
   return (
-    <div className="min-h-screen bg-white text-neutral-900">
-      <Hero lastSearched={lastSearched} onSearch={onSearch} />
+    <div className="app">
+      <Header onQuickSearch={() => search('modern')} />
 
-      <main className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 -mt-20 pb-24">
-        <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-xl border border-neutral-200">
-          <div className="p-6 sm:p-8">
-            <SearchBar onSearch={onSearch} loading={loading} />
-            <Results data={data} loading={loading} error={error} />
+      <main className="container">
+        <div className="panel">
+          <SearchBar
+            value={query}
+            onChange={setQuery}
+            onSubmit={() => search()}
+            disabled={!canSearch || status === 'loading'}
+            loading={status === 'loading'}
+          />
+
+          <div className="content-grid">
+            <section className="content-main">
+              <Results
+                status={status}
+                error={error}
+                result={result}
+                onPick={(w) => { setQuery(w); search(w) }}
+              />
+            </section>
+            <aside className="content-aside">
+              <Recent
+                items={recent}
+                onPick={(w) => { setQuery(w); search(w) }}
+                onClear={() => setRecent([])}
+              />
+            </aside>
           </div>
-        </div>
-
-        <div className="mt-8">
-          <History items={history} onSelect={onHistorySelect} onClear={onClearHistory} />
         </div>
       </main>
 
-      <footer className="border-t border-neutral-200 py-8 text-center text-sm text-neutral-500">
-        <div className="max-w-5xl mx-auto px-4">
-          Powered by Free Dictionary API · Built with React + Tailwind
+      <footer className="footer">
+        <div className="container footer-inner">
+          <span>Dictionary Web App • Free Dictionary API</span>
+          <a href="https://dictionaryapi.dev/" target="_blank" rel="noreferrer" className="link">API Docs</a>
         </div>
       </footer>
     </div>
-  );
+  )
 }
